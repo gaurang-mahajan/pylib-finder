@@ -1,0 +1,32 @@
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+*.env
+
+# ── Search results (personal run data — not part of the source) ───────────────
+pylib_results/*/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Tools ─────────────────────────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
