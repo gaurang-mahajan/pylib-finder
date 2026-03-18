@@ -1,0 +1,15 @@
+name: kneed
+version: "0.8.5"
+install: pip install kneed
+imports: [kneed]
+primary_use: "A Python library specifically designed to detect knee/elbow points in curves, perfect for finding the optimal number of components in a PCA scree plot. | functions: KneeLocator"
+key_functions:
+  - KneeLocator
+safety:
+  pypi_verified: true
+  cve_clean: true
+  safety_passed: true
+fit_score: 9.5
+license: ""
+pypi_url: https://pypi.org/project/kneed/
+github_url: https://github.com/arvkevi/kneed
