@@ -1,0 +1,245 @@
+{
+  "query": "find python function to identify knee in PCA plot",
+  "intent": "Find a Python function to automatically detect the elbow/knee point in a PCA scree plot (explained variance vs. number of components).",
+  "search_terms": [
+    "kneed python elbow detection",
+    "PCA scree plot knee point detection python",
+    "elbow method PCA explained variance python",
+    "kneedle algorithm python",
+    "automatic elbow detection curve python"
+  ],
+  "timestamp": "2026-02-27_225701",
+  "candidates": [
+    {
+      "name": "kneed",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "A Python library specifically designed to detect knee/elbow points in curves, perfect for finding the optimal number of components in a PCA scree plot. | functions: KneeLocator",
+      "fit_score": 9.5,
+      "fit_notes": "The kneed library is purpose-built for detecting knee/elbow points in curves, making it an excellent fit for identifying the optimal number of PCA components from a scree plot of explained variance.",
+      "suggested_functions": [
+        "KneeLocator"
+      ],
+      "pypi_verified": true,
+      "latest_version": "0.8.5",
+      "days_since_release": 964,
+      "monthly_downloads": 888564,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u26a0 Not updated in 2+ year(s)"
+      ],
+      "pypi_url": "https://pypi.org/project/kneed/",
+      "github_url": "https://github.com/arvkevi/kneed",
+      "docs_url": ""
+    },
+    {
+      "name": "pca",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "A dedicated PCA library that wraps scikit-learn and includes built-in scree plot generation with automatic elbow detection functionality. | functions: pca.fit_transform, pca.plot",
+      "fit_score": 9.0,
+      "fit_notes": "The `pca` library directly addresses the user's need by wrapping scikit-learn's PCA with built-in scree plot generation and automatic elbow/knee point detection, making it an excellent fit for the task.",
+      "suggested_functions": [
+        "pca.fit_transform",
+        "pca.plot"
+      ],
+      "pypi_verified": true,
+      "latest_version": "2.10.2",
+      "days_since_release": 6,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [],
+      "pypi_url": "https://pypi.org/project/pca/",
+      "github_url": "https://github.com/erdogant/pca/archive/{version}.tar.gz",
+      "docs_url": ""
+    },
+    {
+      "name": "yellowbrick",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "A machine learning visualization library that includes a KElbowVisualizer for detecting optimal clusters/components via the elbow method. | functions: KElbowVisualizer",
+      "fit_score": 4.0,
+      "fit_notes": "Yellowbrick's KElbowVisualizer is designed for detecting the optimal number of clusters in clustering algorithms (e.g., KMeans), not for detecting the elbow/knee point in a PCA scree plot of explained variance, so while conceptually related to elbow detection, it does not directly address the user's specific PCA use case.",
+      "suggested_functions": [
+        "KElbowVisualizer"
+      ],
+      "pypi_verified": true,
+      "latest_version": "1.5",
+      "days_since_release": 1286,
+      "monthly_downloads": null,
+      "license": "Apache 2",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u26a0 Not updated in 3+ year(s)"
+      ],
+      "pypi_url": "https://pypi.org/project/yellowbrick/",
+      "github_url": "https://github.com/DistrictDataLabs/yellowbrick/tarball/v1.5",
+      "docs_url": "https://pythonhosted.org/yellowbrick/"
+    },
+    {
+      "name": "ruptures",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "A change point detection library that can be repurposed to detect the elbow point in a scree plot by identifying where the explained variance curve changes slope. | functions: Pelt, Binseg",
+      "fit_score": 3.5,
+      "fit_notes": "While ruptures can technically detect change points in a 1D signal like a scree plot's explained variance curve, it is designed for time-series change point detection rather than elbow/knee detection specifically, making it an indirect and non-ideal solution compared to purpose-built libraries like kneed.",
+      "suggested_functions": [
+        "Pelt",
+        "Binseg"
+      ],
+      "pypi_verified": true,
+      "latest_version": "1.1.10",
+      "days_since_release": 170,
+      "monthly_downloads": 977145,
+      "license": "BSD-2-Clause",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [],
+      "pypi_url": "https://pypi.org/project/ruptures/",
+      "github_url": "https://github.com/deepcharles/ruptures/issues/",
+      "docs_url": "https://github.com/deepcharles/ruptures/"
+    },
+    {
+      "name": "scikit-learn",
+      "excluded": true,
+      "exclusion_reason": "Known CVEs detected",
+      "sources": [
+        "llm"
+      ],
+      "description": "Provides PCA with explained_variance_ratio_ attribute which can be used alongside custom or library-based elbow detection methods. | functions: sklearn.decomposition.PCA",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "pypi_verified": true,
+      "latest_version": "1.8.0",
+      "days_since_release": 79,
+      "monthly_downloads": 166031504,
+      "license": "",
+      "safety_passed": false,
+      "cve_clean": false,
+      "safety_notes": [
+        "\u26a0 Known CVEs: GHSA-jjw5-xxj6-pcv5, GHSA-jw8x-6495-233v, GHSA-jxfp-4rvq-9h9m"
+      ],
+      "pypi_url": "https://pypi.org/project/scikit-learn/",
+      "github_url": "https://github.com/scikit-learn/scikit-learn",
+      "docs_url": ""
+    },
+    {
+      "name": "numpy",
+      "excluded": true,
+      "exclusion_reason": "Known CVEs detected",
+      "sources": [
+        "llm"
+      ],
+      "description": "Provides gradient and diff functions that can be used to manually compute the second derivative of the explained variance curve to find the elbow point. | functions: numpy.gradient, numpy.diff, numpy.argmax",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "pypi_verified": true,
+      "latest_version": "2.4.2",
+      "days_since_release": 26,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": false,
+      "cve_clean": false,
+      "safety_notes": [
+        "\u26a0 Known CVEs: GHSA-2fc2-6r4j-p65h, GHSA-5545-2q6w-2gh6, GHSA-6p56-wp2h-9hxr"
+      ],
+      "pypi_url": "https://pypi.org/project/numpy/",
+      "github_url": "https://github.com/numpy/numpy",
+      "docs_url": ""
+    },
+    {
+      "name": "salah_analysis_using_mediapipe_and_opencv_with_creative_and_user_friendly_gui",
+      "excluded": true,
+      "exclusion_reason": "Not found on PyPI",
+      "sources": [
+        "github"
+      ],
+      "description": "This project is a Python-based solution for real-time detection and tracking of different poses of Salah using the Mediapipe library and Graphical User Interface (GUI). It uses the pose estimation model provided by Mediapipe to detect the 33 keypoints of the human body, including the head, neck, shoulders, elbows, wrists, hips, knees, and ankles.",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "pypi_verified": false,
+      "latest_version": "",
+      "days_since_release": null,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "Not found on PyPI"
+      ],
+      "pypi_url": "",
+      "github_url": "https://github.com/Muhammad-Anees99/Salah-Analysis-using-Mediapipe-and-OpenCV-with-Creative-and-User-Friendly-GUI",
+      "docs_url": ""
+    },
+    {
+      "name": "pose_detection_using_mediapipe",
+      "excluded": true,
+      "exclusion_reason": "Not found on PyPI",
+      "sources": [
+        "github"
+      ],
+      "description": "This repository contains a Python script for pose detection using the MediaPipe library. Pose detection involves identifying key points on a person's body, such as the nose, shoulders, elbows, and knees. The script processes static images and provides real-time pose detection through a webcam.",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "pypi_verified": false,
+      "latest_version": "",
+      "days_since_release": null,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "Not found on PyPI"
+      ],
+      "pypi_url": "",
+      "github_url": "https://github.com/sheshrajPawar/Pose-Detection-using-MediaPipe",
+      "docs_url": ""
+    },
+    {
+      "name": "automated_salah_pose_tracker_using_mediapipe_and_user_friendly_interface",
+      "excluded": true,
+      "exclusion_reason": "Not found on PyPI",
+      "sources": [
+        "github"
+      ],
+      "description": "This project is a Python-based solution for real-time detection and tracking of different poses of Salah using the Mediapipe library and Graphical User Interface (GUI). It uses the pose estimation model provided by Mediapipe to detect the 33 keypoints of the human body, including the head, neck, shoulders, elbows, wrists, hips, knees, and ankles.",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "pypi_verified": false,
+      "latest_version": "",
+      "days_since_release": null,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "Not found on PyPI"
+      ],
+      "pypi_url": "",
+      "github_url": "https://github.com/Muhammad-Anees99/Automated-Salah-Pose-Tracker-using-Mediapipe-and-User-Friendly-Interface",
+      "docs_url": ""
+    }
+  ]
+}
