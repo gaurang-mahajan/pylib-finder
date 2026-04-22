@@ -1,0 +1,24 @@
+name: kneed
+version: "0.8.6"
+install: pip install kneed
+imports: [kneed]
+primary_use: "Automatically detects the knee/elbow point in a curve, directly applicable to finding the optimal number of components from a PCA scree plot. | functions: KneeLocator"
+key_functions:
+  - KneeLocator
+usage_example: |
+    from sklearn.decomposition import PCA
+    from sklearn.datasets import load_iris
+    from kneed import KneeLocator
+    
+    X = load_iris().data
+    pca = PCA().fit(X)
+    kl = KneeLocator(range(1, len(pca.explained_variance_ratio_) + 1), pca.explained_variance_ratio_, curve='convex', direction='decreasing')
+    print(f'Optimal number of components: {kl.elbow}')
+safety:
+  pypi_verified: true
+  cve_clean: true
+  safety_passed: true
+fit_score: 9.0
+license: ""
+pypi_url: https://pypi.org/project/kneed/
+github_url: https://github.com/arvkevi/kneed
