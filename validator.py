@@ -23,7 +23,9 @@ from typing import List, Optional
 
 from config import (
     HTTP_TIMEOUT, DAYS_SINCE_RELEASE_WARN,
-    MIN_MONTHLY_DOWNLOADS, SUSPICIOUS_AST_PATTERNS, MAX_VALIDATION_WORKERS,
+    MIN_MONTHLY_DOWNLOADS, SUSPICIOUS_AST_PATTERNS, SUSPICIOUS_PATHS,
+    MAX_VALIDATION_WORKERS, DAYS_NEW_PACKAGE_WARN, PRE_RELEASE_WARN,
+    RESTRICTIVE_LICENSES,
 )
 from models import Candidate, RunContext, SearchResult
 from scrapers import fetch_pypi_details, _get_json
@@ -68,7 +70,8 @@ def check_authenticity(c: Candidate) -> None:
     info = data.get("info", {})
 
     c.latest_version = info.get("version", "")
-    c.license = info.get("license", "") or ""
+    raw_license = (info.get("license", "") or "").strip()
+    c.license = raw_license[:60] + "…" if len(raw_license) > 60 else raw_license
     c.pypi_url = info.get("package_url", f"https://pypi.org/project/{c.name}")
     c.docs_url = info.get("docs_url", "") or info.get("home_page", "") or ""
 
@@ -101,6 +104,55 @@ def check_authenticity(c: Candidate) -> None:
                     c.days_since_release = (datetime.datetime.utcnow() - dt).days
                 except ValueError:
                     pass
+
+    # Compute package age from the very first release ever
+    if releases:
+        all_uploads = []
+        for files in releases.values():
+            for f in files:
+                t = f.get("upload_time", "")
+                if t:
+                    try:
+                        all_uploads.append(datetime.datetime.fromisoformat(t))
+                    except ValueError:
+                        pass
+        if all_uploads:
+            first_release = min(all_uploads)
+            c.days_since_first_release = (datetime.datetime.utcnow() - first_release).days
+
+    # ── License check ─────────────────────────────────────────────────────────
+    lic = c.license.strip() if c.license else ""
+    if not lic or lic.upper() in ("UNKNOWN", "NONE", ""):
+        c.safety_notes.append("ℹ No license declared")
+    else:
+        for fragment in RESTRICTIVE_LICENSES:
+            if fragment.lower() in lic.lower():
+                c.safety_notes.append(
+                    f"⚠ Restrictive license ({lic}) — may limit commercial or proprietary use"
+                )
+                break
+
+    # ── PyPI metadata safety signals ─────────────────────────────────────────
+
+    # Yanked latest release
+    if info.get("yanked", False):
+        yanked_reason = info.get("yanked_reason") or "no reason given"
+        c.safety_notes.append(f"⚠ Latest release is yanked on PyPI ({yanked_reason})")
+
+    # Only one version ever published — common squatting / throwaway profile
+    non_empty_releases = [v for v, files in releases.items() if files]
+    if len(non_empty_releases) == 1:
+        c.safety_notes.append("ℹ Only one version ever published")
+
+    # No project URLs (homepage, source repo, etc.)
+    if not project_urls:
+        c.safety_notes.append("ℹ No project URLs listed (no homepage or source link)")
+
+    # Wheel-only: no inspectable sdist on PyPI — AST scan will be skipped silently
+    pkg_urls = data.get("urls", [])
+    has_sdist = any(u.get("packagetype") == "sdist" for u in pkg_urls)
+    if not has_sdist and pkg_urls:
+        c.safety_notes.append("ℹ No source distribution (sdist) on PyPI — source not inspectable")
 
 
 # ── Stage 2: Safety ───────────────────────────────────────────────────────────
@@ -198,8 +250,12 @@ def _check_ast(c: Candidate) -> None:
                 c.safety_notes.append("⚠ AST parse failed (possibly obfuscated)")
                 return
 
+            _B64_RE  = re.compile(r'^[A-Za-z0-9+/=]+$')
+            _IPV4_RE = re.compile(r'\b(\d{1,3}\.){3}\d{1,3}\b')
+
             flags = []
             for node in ast.walk(tree):
+                # ── Suspicious function calls ─────────────────────────────────
                 if isinstance(node, ast.Call):
                     func_name = ""
                     if isinstance(node.func, ast.Name):
@@ -209,11 +265,32 @@ def _check_ast(c: Candidate) -> None:
                     if func_name in SUSPICIOUS_AST_PATTERNS:
                         flags.append(func_name)
 
-                if isinstance(node, ast.Assign):
-                    for val in ast.walk(node):
-                        if isinstance(val, ast.Constant) and isinstance(val.value, str):
-                            if len(val.value) > 100 and re.match(r'^[A-Za-z0-9+/=]+$', val.value):
-                                flags.append("possible_base64_obfuscation")
+                # ── os.environ attribute access ───────────────────────────────
+                if (
+                    isinstance(node, ast.Attribute)
+                    and node.attr == "environ"
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "os"
+                ):
+                    flags.append("os.environ access")
+
+                # ── String constant checks ────────────────────────────────────
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    v = node.value
+
+                    # Base64-like blob (catches inline exec(b64decode("...")) too)
+                    if len(v) > 100 and _B64_RE.match(v):
+                        flags.append("possible_base64_obfuscation")
+
+                    # Hardcoded IPv4 addresses
+                    if _IPV4_RE.search(v):
+                        flags.append(f"hardcoded IP ({_IPV4_RE.search(v).group()})")
+
+                    # Credential / sensitive path access
+                    for path_frag in SUSPICIOUS_PATHS:
+                        if path_frag in v:
+                            flags.append(f"sensitive path access ({path_frag})")
+                            break  # one flag per string is enough
 
             if flags:
                 unique_flags = list(dict.fromkeys(flags))
@@ -243,6 +320,17 @@ def check_health(c: Candidate) -> None:
     if c.monthly_downloads is not None and c.monthly_downloads < MIN_MONTHLY_DOWNLOADS:
         c.safety_notes.append(
             f"⚠ Low download traction ({c.monthly_downloads:,}/month)"
+        )
+    if (
+        c.days_since_first_release is not None
+        and c.days_since_first_release <= DAYS_NEW_PACKAGE_WARN
+    ):
+        c.safety_notes.append(
+            f"⚠ New package (first released {c.days_since_first_release}d ago)"
+        )
+    if PRE_RELEASE_WARN and c.latest_version and c.latest_version.startswith("0."):
+        c.safety_notes.append(
+            f"ℹ Pre-release version ({c.latest_version}) — API may be unstable"
         )
 
 
@@ -290,6 +378,9 @@ def _validate_one(
         progress_callback(name, "safety")
     check_safety(c)
     check_health(c)
+    # "New package" is a safety-level warning added by check_health — reflect in safety_passed
+    if any("New package" in n for n in c.safety_notes):
+        c.safety_passed = False
     decide_exclusion(c)
 
     return c
@@ -313,7 +404,10 @@ def validate_candidates(
     ctx: RunContext with intent for fit scoring
     progress_callback: optional fn(name, stage) for CLI progress display
     """
-    from llm import score_fit_batch, score_fit  # avoid circular import at module level
+    from llm import (  # avoid circular import at module level
+        score_fit_batch, score_fit,
+        interpret_ast_flags, contextualise_cves,
+    )
 
     # ── Stages 1–4: parallel network validation ───────────────────────────────
     candidates: List[Candidate] = []
@@ -352,6 +446,28 @@ def validate_candidates(
                 except Exception as e:
                     c.fit_notes = f"Scoring failed: {e}"
                     c.fit_score = 0.0
+
+    # ── Stage 5b: LLM interpretation of AST flags and CVE findings ───────────
+    # Run on ALL candidates (including excluded) — CVE/AST context is most
+    # useful precisely when a candidate has been excluded for those reasons.
+    ast_flagged = [
+        c for c in candidates
+        if any("AST" in n for n in c.safety_notes)
+    ]
+    cve_flagged = [
+        c for c in candidates
+        if c.cve_clean is False
+    ]
+    for c in ast_flagged:
+        try:
+            c.ast_risk_summary = interpret_ast_flags(c)
+        except Exception:
+            pass
+    for c in cve_flagged:
+        try:
+            c.cve_summary = contextualise_cves(c)
+        except Exception:
+            pass
 
     candidates.sort(key=lambda c: (c.excluded, -c.fit_score))
     return candidates
