@@ -25,7 +25,11 @@ import urllib.error
 import json
 from typing import List, Optional
 
-from config import HTTP_TIMEOUT, MAX_CANDIDATES_PER_SOURCE, GITHUB_TOKEN
+from config import (
+    HTTP_TIMEOUT, MAX_CANDIDATES_PER_SOURCE, GITHUB_TOKEN,
+    PYPI_MAX_TERMS, SCRAPER_MAX_TERMS,
+    REDDIT_MAX_TERMS, REDDIT_MAX_SUBREDDITS,
+)
 from models import SearchResult
 
 
@@ -98,7 +102,7 @@ def scrape_pypi(search_terms: List[str]) -> List[SearchResult]:
     results: List[SearchResult] = []
     seen: set = set()
 
-    for term in search_terms[:3]:
+    for term in search_terms[:PYPI_MAX_TERMS]:
         encoded = urllib.parse.quote_plus(term)
         url = f"https://pypi.org/search/?q={encoded}&o=-zscore"
 
@@ -185,7 +189,7 @@ def scrape_github(search_terms: List[str]) -> List[SearchResult]:
     seen: set = set()
     headers = _github_headers()
 
-    for term in search_terms[:2]:
+    for term in search_terms[:SCRAPER_MAX_TERMS]:
         query = urllib.parse.quote_plus(f"{term} language:python")
         url = (
             f"https://api.github.com/search/repositories"
@@ -232,7 +236,7 @@ def scrape_github_topics(search_terms: List[str]) -> List[SearchResult]:
     seen: set = set()
     headers = _github_headers()
 
-    for term in search_terms[:2]:
+    for term in search_terms[:SCRAPER_MAX_TERMS]:
         topic_slug = re.sub(r'[^a-z0-9]+', '-', term.lower()).strip('-')
         url = (
             f"https://api.github.com/search/repositories"
@@ -268,7 +272,7 @@ def scrape_github_topics(search_terms: List[str]) -> List[SearchResult]:
 
 # ── 6. Stack Overflow search ──────────────────────────────────────────────────
 
-def scrape_stackoverflow(search_terms: List[str]) -> List[SearchResult]:
+def scrape_stackoverflow(search_terms: List[str], intent: str = "") -> List[SearchResult]:
     """
     StackExchange API — searches questions tagged python for relevant terms.
 
@@ -280,7 +284,7 @@ def scrape_stackoverflow(search_terms: List[str]) -> List[SearchResult]:
     results: List[SearchResult] = []
     seen: set = set()
 
-    for term in search_terms[:2]:
+    for term in search_terms[:SCRAPER_MAX_TERMS]:
         encoded = urllib.parse.quote_plus(term)
 
         # Fetch questions with bodies included
@@ -332,6 +336,7 @@ def scrape_stackoverflow(search_terms: List[str]) -> List[SearchResult]:
                 question_ids.append(str(item["question_id"]))
 
         # Fetch top answers for first 5 questions (second-tier signal)
+        answer_bodies = []
         if question_ids:
             ids_str = ";".join(question_ids[:5])
             ans_url = (
@@ -342,6 +347,7 @@ def scrape_stackoverflow(search_terms: List[str]) -> List[SearchResult]:
             if ans_data and "items" in ans_data:
                 for ans in ans_data["items"]:
                     body = re.sub(r'<[^>]+>', ' ', ans.get("body", "")).lower()
+                    answer_bodies.append(body)
                     for pkg in re.findall(
                         r'(?:pip install|import)\s+([a-z][a-z0-9_-]{2,30})',
                         body,
@@ -356,6 +362,24 @@ def scrape_stackoverflow(search_terms: List[str]) -> List[SearchResult]:
                                 url="",
                             ))
 
+        # LLM pass — catch natural-language recommendations missed by regex
+        if intent and answer_bodies:
+            try:
+                from llm import extract_packages_from_text
+                llm_hits = extract_packages_from_text(answer_bodies, intent, "Stack Overflow")
+                for hit in llm_hits:
+                    name = hit["name"]
+                    if name and name not in seen:
+                        seen.add(name)
+                        results.append(SearchResult(
+                            name=name,
+                            source="stackoverflow",
+                            description=hit.get("reason", f"LLM-extracted from SO answers for: {term}"),
+                            url="",
+                        ))
+            except Exception:
+                pass
+
         time.sleep(0.5)
 
     return results
@@ -363,7 +387,7 @@ def scrape_stackoverflow(search_terms: List[str]) -> List[SearchResult]:
 
 # ── 7. Reddit search ──────────────────────────────────────────────────────────
 
-def scrape_reddit(search_terms: List[str]) -> List[SearchResult]:
+def scrape_reddit(search_terms: List[str], intent: str = "") -> List[SearchResult]:
     """
     Reddit JSON search across Python-related subreddits.
     Extracts package names from post titles and bodies using explicit
@@ -377,8 +401,10 @@ def scrape_reddit(search_terms: List[str]) -> List[SearchResult]:
         "statistics"
     ]
 
-    for term in search_terms[:2]:
-        for sub in subreddits[:4]:
+    post_bodies: List[str] = []
+
+    for term in search_terms[:REDDIT_MAX_TERMS]:
+        for sub in subreddits[:REDDIT_MAX_SUBREDDITS]:
             encoded = urllib.parse.quote_plus(term)
             url = (
                 f"https://www.reddit.com/r/{sub}/search.json"
@@ -395,6 +421,8 @@ def scrape_reddit(search_terms: List[str]) -> List[SearchResult]:
                 selftext = post_data.get("selftext", "")
 
                 combined = (title + " " + selftext[:800]).lower()
+                if selftext.strip():
+                    post_bodies.append(title + "\n" + selftext[:600])
 
                 # Backtick-wrapped names, pip install, import patterns
                 pkg_candidates = re.findall(r'`([a-z][a-z0-9_-]{2,30})`', combined)
@@ -417,6 +445,24 @@ def scrape_reddit(search_terms: List[str]) -> List[SearchResult]:
 
             time.sleep(1.0)
 
+    # LLM pass — catch natural-language recommendations missed by regex
+    if intent and post_bodies:
+        try:
+            from llm import extract_packages_from_text
+            llm_hits = extract_packages_from_text(post_bodies, intent, "Reddit")
+            for hit in llm_hits:
+                name = hit["name"]
+                if name and name not in seen:
+                    seen.add(name)
+                    results.append(SearchResult(
+                        name=name,
+                        source="reddit",
+                        description=hit.get("reason", "LLM-extracted from Reddit posts"),
+                        url="",
+                    ))
+        except Exception:
+            pass
+
     return results
 
 
@@ -430,7 +476,7 @@ def scrape_web(search_terms: List[str]) -> List[SearchResult]:
     results: List[SearchResult] = []
     seen: set = set()
 
-    for term in search_terms[:2]:
+    for term in search_terms[:SCRAPER_MAX_TERMS]:
         query = urllib.parse.quote_plus(f"python library {term}")
         url = f"https://html.duckduckgo.com/html/?q={query}"
 
@@ -477,7 +523,7 @@ def scrape_papers_with_code(search_terms: List[str]) -> List[SearchResult]:
     results: List[SearchResult] = []
     seen: set = set()
 
-    for term in search_terms[:2]:
+    for term in search_terms[:SCRAPER_MAX_TERMS]:
         encoded = urllib.parse.quote_plus(term)
         url = (
             f"https://paperswithcode.com/api/v1/papers/"
