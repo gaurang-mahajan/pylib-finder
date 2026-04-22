@@ -57,7 +57,7 @@ def _health_str(c: Candidate) -> str:
     return " | ".join(parts) if parts else "—"
 
 
-def write_markdown_report(candidates: List[Candidate], ctx: RunContext) -> str:
+def write_markdown_report(candidates: List[Candidate], ctx: RunContext, comparison: str = "") -> str:
     """Write report.md and return file path."""
     lines = []
 
@@ -101,7 +101,21 @@ def write_markdown_report(candidates: List[Candidate], ctx: RunContext) -> str:
             for note in c.safety_notes:
                 lines.append(f"- {note}")
 
+        if c.ast_risk_summary:
+            lines.append(f"\n**AST risk assessment:** {c.ast_risk_summary}")
+        if c.cve_summary:
+            lines.append(f"\n**CVE context:** {c.cve_summary}")
+
+        if c.usage_snippet:
+            lines.append(f"\n**Usage example:**")
+            lines.append(f"```python\n{c.usage_snippet}\n```")
+
         lines.append("\n---\n")
+
+    if comparison:
+        lines.append(f"\n## Comparison\n")
+        lines.append(comparison)
+        lines.append("")
 
     if excluded:
         lines.append(f"\n## Excluded Candidates ({len(excluded)})\n")
@@ -109,6 +123,14 @@ def write_markdown_report(candidates: List[Candidate], ctx: RunContext) -> str:
         lines.append("|---------|--------|")
         for c in excluded:
             lines.append(f"| `{c.name}` | {c.exclusion_reason} |")
+        # Surface CVE/AST context for excluded candidates where available
+        for c in excluded:
+            if c.cve_summary or c.ast_risk_summary:
+                lines.append(f"\n**`{c.name}`**")
+                if c.cve_summary:
+                    lines.append(f"- CVE context: {c.cve_summary}")
+                if c.ast_risk_summary:
+                    lines.append(f"- AST risk: {c.ast_risk_summary}")
 
     content = "\n".join(lines)
     path = os.path.join(ctx.output_dir, "report.md")
@@ -119,7 +141,12 @@ def write_markdown_report(candidates: List[Candidate], ctx: RunContext) -> str:
 
 # ── JSON results ──────────────────────────────────────────────────────────────
 
-def write_json_results(candidates: List[Candidate], ctx: RunContext, token_usage: dict = None) -> str:
+def write_json_results(
+    candidates: List[Candidate],
+    ctx: RunContext,
+    token_usage: dict = None,
+    comparison: str = "",
+) -> str:
     """Write results.json and return file path."""
     data = {
         "query": ctx.raw_query,
@@ -127,6 +154,7 @@ def write_json_results(candidates: List[Candidate], ctx: RunContext, token_usage
         "search_terms": ctx.search_terms,
         "timestamp": ctx.timestamp,
         "token_usage": token_usage or {},
+        "comparison": comparison,
         "candidates": [],
     }
 
@@ -140,9 +168,13 @@ def write_json_results(candidates: List[Candidate], ctx: RunContext, token_usage
             "fit_score": c.fit_score,
             "fit_notes": c.fit_notes,
             "suggested_functions": c.suggested_functions,
+            "usage_snippet": c.usage_snippet,
+            "ast_risk_summary": c.ast_risk_summary,
+            "cve_summary": c.cve_summary,
             "pypi_verified": c.pypi_verified,
             "latest_version": c.latest_version,
             "days_since_release": c.days_since_release,
+            "days_since_first_release": c.days_since_first_release,
             "monthly_downloads": c.monthly_downloads,
             "license": c.license,
             "safety_passed": c.safety_passed,
@@ -178,6 +210,12 @@ def write_skill_card(c: Candidate, output_dir: str) -> str:
         lines.append(f"key_functions:")
         for fn in c.suggested_functions:
             lines.append(f"  - {fn}")
+
+    if c.usage_snippet:
+        # Indent snippet lines for YAML literal block scalar
+        indented = "\n".join(f"    {ln}" for ln in c.usage_snippet.splitlines())
+        lines.append(f"usage_example: |")
+        lines.append(indented)
 
     lines.append(f"safety:")
     lines.append(f"  pypi_verified: {str(c.pypi_verified).lower()}")
