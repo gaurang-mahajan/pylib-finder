@@ -1,0 +1,292 @@
+{
+  "query": "function to locate knee in a PCA plot",
+  "intent": "Find the optimal number of principal components by detecting the elbow/knee point in a PCA explained variance (scree) plot.",
+  "search_terms": [
+    "knee elbow detection PCA scree plot python",
+    "kneed python library elbow point",
+    "optimal number PCA components knee detection",
+    "elbow method explained variance ratio",
+    "automatic knee point detection algorithm python"
+  ],
+  "timestamp": "2026-04-12_153516",
+  "token_usage": {
+    "input": 7437,
+    "output": 2188,
+    "calls": 12
+  },
+  "comparison": "**kneed** is purpose-built for exactly this task: you pass it the component indices and their explained variances, and it returns the elbow point automatically with minimal code. **yellowbrick** offers polished visualization and has broad adoption (~594k monthly downloads), but its elbow detector targets clustering (k-means) rather than PCA scree plots, and it hasn't been updated in over three years. **factor-analyzer** provides related scree/parallel-analysis tools from the factor-analysis tradition, yet it also lacks direct elbow detection and is similarly stale. The key trade-off is specificity versus ecosystem breadth: kneed does one thing well and is actively maintained, while the alternatives offer richer visualization or statistical context but don't squarely solve the stated problem. Use **kneed** \u2014 it's the most direct, lightweight, and up-to-date solution for programmatically finding the optimal number of principal components from a scree curve.",
+  "candidates": [
+    {
+      "name": "kneed",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "hints",
+        "stackoverflow",
+        "reddit",
+        "llm"
+      ],
+      "description": "Automatically detects the knee/elbow point in a curve, directly applicable to finding the optimal number of components from a PCA scree plot. | functions: KneeLocator",
+      "fit_score": 9.0,
+      "fit_notes": "Directly and automatically detects the knee/elbow point in a curve, making it the most targeted solution for finding the optimal number of PCA components from a scree plot; minor deduction for 0.x pre-release status.",
+      "suggested_functions": [
+        "KneeLocator"
+      ],
+      "usage_snippet": "",
+      "ast_risk_summary": "",
+      "cve_summary": "",
+      "pypi_verified": true,
+      "latest_version": "0.8.6",
+      "days_since_release": 22,
+      "days_since_first_release": 3044,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u2139 No license declared",
+        "\u2139 Pre-release version (0.8.6) \u2014 API may be unstable"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/kneed/",
+      "github_url": "https://github.com/arvkevi/kneed",
+      "docs_url": ""
+    },
+    {
+      "name": "yellowbrick",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "hints",
+        "llm"
+      ],
+      "description": "Machine learning visualization library that includes a KElbowVisualizer and PCA visualizer for determining optimal components or clusters. | functions: yellowbrick.features.PCA, KElbowVisualizer",
+      "fit_score": 6.0,
+      "fit_notes": "KElbowVisualizer automates elbow detection for clustering and its PCA visualizer helps with component analysis, but elbow detection is primarily designed for k-means rather than PCA scree plots; penalized for staleness (>730 days since update).",
+      "suggested_functions": [
+        "KElbowVisualizer",
+        "yellowbrick.features.PCA"
+      ],
+      "usage_snippet": "",
+      "ast_risk_summary": "",
+      "cve_summary": "",
+      "pypi_verified": true,
+      "latest_version": "1.5",
+      "days_since_release": 1329,
+      "days_since_first_release": 3615,
+      "monthly_downloads": 593876,
+      "license": "Apache 2",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u26a0 Not updated in 3+ year(s)"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/yellowbrick/",
+      "github_url": "https://github.com/DistrictDataLabs/yellowbrick/tarball/v1.5",
+      "docs_url": "https://pythonhosted.org/yellowbrick/"
+    },
+    {
+      "name": "factor-analyzer",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "Provides parallel analysis and scree plot utilities for determining the number of factors/components to retain. | functions: FactorAnalyzer, calculate_bartlett_sphericity, calculate_kmo",
+      "fit_score": 5.5,
+      "fit_notes": "Provides parallel analysis and scree plot utilities for factor retention decisions which is related but not directly elbow detection on PCA explained variance; penalized for 0.x pre-release and >730 days since last update.",
+      "suggested_functions": [
+        "FactorAnalyzer",
+        "calculate_kmo",
+        "calculate_bartlett_sphericity"
+      ],
+      "usage_snippet": "",
+      "ast_risk_summary": "",
+      "cve_summary": "",
+      "pypi_verified": true,
+      "latest_version": "0.5.1",
+      "days_since_release": 793,
+      "days_since_first_release": 3047,
+      "monthly_downloads": 48665,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u2139 No license declared",
+        "\u26a0 Not updated in 2+ year(s)",
+        "\u2139 Pre-release version (0.5.1) \u2014 API may be unstable"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/factor-analyzer/",
+      "github_url": "https://github.com/EducationalTestingService/factor_analyzer",
+      "docs_url": "https://github.com/EducationalTestingService/factor_analyzer"
+    },
+    {
+      "name": "prince",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "A library for multivariate exploratory data analysis (PCA, MCA, etc.) that provides eigenvalue-based diagnostics useful for component selection. | functions: PCA",
+      "fit_score": 3.5,
+      "fit_notes": "Offers PCA with eigenvalue diagnostics that could inform component selection, but does not provide automatic elbow/knee detection; penalized slightly for 0.x pre-release status.",
+      "suggested_functions": [
+        "PCA"
+      ],
+      "usage_snippet": "",
+      "ast_risk_summary": "",
+      "cve_summary": "",
+      "pypi_verified": true,
+      "latest_version": "0.17.0",
+      "days_since_release": 18,
+      "days_since_first_release": 3438,
+      "monthly_downloads": null,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u2139 No license declared",
+        "\u2139 No project URLs listed (no homepage or source link)",
+        "\u2139 Pre-release version (0.17.0) \u2014 API may be unstable"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/prince/",
+      "github_url": "",
+      "docs_url": ""
+    },
+    {
+      "name": "plotly",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "Interactive plotting library that can create interactive scree plots, making it easier to visually identify the elbow point. | functions: plotly.express.line, plotly.graph_objects.Scatter",
+      "fit_score": 3.0,
+      "fit_notes": "Can create interactive scree plots for visual inspection of the elbow point, but provides no automatic elbow detection algorithm, serving only as a visualization aid.",
+      "suggested_functions": [
+        "plotly.express.line",
+        "plotly.graph_objects.Scatter"
+      ],
+      "usage_snippet": "",
+      "ast_risk_summary": "",
+      "cve_summary": "",
+      "pypi_verified": true,
+      "latest_version": "6.7.0",
+      "days_since_release": 2,
+      "days_since_first_release": 4686,
+      "monthly_downloads": 55535465,
+      "license": "",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [
+        "\u2139 No license declared"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/plotly/",
+      "github_url": "https://github.com/plotly/plotly.py/blob/main/CHANGELOG.md",
+      "docs_url": ""
+    },
+    {
+      "name": "matplotlib",
+      "excluded": false,
+      "exclusion_reason": "",
+      "sources": [
+        "llm"
+      ],
+      "description": "Essential for plotting the scree plot of explained variance to visually inspect the elbow point. | functions: matplotlib.pyplot.plot, matplotlib.pyplot.bar",
+      "fit_score": 2.5,
+      "fit_notes": "Essential for plotting the scree plot to visually inspect the elbow, but provides no automatic elbow/knee detection capability whatsoever.",
+      "suggested_functions": [
+        "matplotlib.pyplot.plot",
+        "matplotlib.pyplot.bar"
+      ],
+      "usage_snippet": "",
+      "ast_risk_summary": "",
+      "cve_summary": "",
+      "pypi_verified": true,
+      "latest_version": "3.10.8",
+      "days_since_release": 122,
+      "days_since_first_release": 7397,
+      "monthly_downloads": 193712797,
+      "license": "License agreement for matplotlib versions 1.3.0 and later\n  \u2026",
+      "safety_passed": true,
+      "cve_clean": true,
+      "safety_notes": [],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/matplotlib/",
+      "github_url": "https://github.com/matplotlib/matplotlib/issues",
+      "docs_url": ""
+    },
+    {
+      "name": "scikit-learn",
+      "excluded": true,
+      "exclusion_reason": "Known CVEs detected",
+      "sources": [
+        "hints",
+        "reddit",
+        "llm"
+      ],
+      "description": "Provides PCA with explained_variance_ratio_ attribute to generate the scree data, and can be combined with elbow detection methods. | functions: sklearn.decomposition.PCA, PCA.explained_variance_ratio_",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "usage_snippet": "",
+      "ast_risk_summary": "This is a **false positive**. Scikit-learn is a widely trusted, established open-source machine learning library; its `os.environ` access in `__init__.py` is used for legitimate configuration purposes (e.g., controlling threading backends, build settings, and runtime behavior), not for malicious activity.",
+      "cve_summary": "These three CVEs all relate to **persistent cross-site scripting (XSS) vulnerabilities in scikit-learn's HTML representation of estimators** (i.e., the `_repr_html_` output displayed in Jupyter notebooks), not in the core computational API. They do not affect typical programmatic use such as importing `sklearn.decomposition.PCA`, calling `.fit()`, or accessing `.explained_variance_ratio_`; they are only relevant if you display untrusted, attacker-crafted estimator objects in a Jupyter/HTML context.",
+      "pypi_verified": true,
+      "latest_version": "1.8.0",
+      "days_since_release": 123,
+      "days_since_first_release": 5316,
+      "monthly_downloads": 197862341,
+      "license": "",
+      "safety_passed": false,
+      "cve_clean": false,
+      "safety_notes": [
+        "\u2139 No license declared",
+        "\u26a0 Known CVEs: GHSA-jjw5-xxj6-pcv5, GHSA-jw8x-6495-233v, GHSA-jxfp-4rvq-9h9m",
+        "\u26a0 Suspicious AST patterns: os.environ access"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/scikit-learn/",
+      "github_url": "https://github.com/scikit-learn/scikit-learn",
+      "docs_url": ""
+    },
+    {
+      "name": "numpy",
+      "excluded": true,
+      "exclusion_reason": "Known CVEs detected",
+      "sources": [
+        "llm",
+        "stackoverflow",
+        "reddit"
+      ],
+      "description": "Useful for computing cumulative explained variance, differences, and second derivatives to programmatically detect the elbow point. | functions: numpy.cumsum, numpy.diff, numpy.gradient",
+      "fit_score": 0.0,
+      "fit_notes": "",
+      "suggested_functions": [],
+      "usage_snippet": "",
+      "ast_risk_summary": "**False positive.** The real `numpy` package legitimately accesses `os.environ` for configuration purposes (e.g., controlling thread counts, build paths, and runtime settings like `NPY_PROMOTION_STATE`). This is entirely normal for a major scientific computing library and is not malicious.",
+      "cve_summary": "These CVEs are unlikely to affect typical programmatic use of numpy's numerical functions like `cumsum`, `diff`, and `gradient`. GHSA-2fc2-6r4j-p65h and GHSA-5545-2q6w-2gh6 involve tempfile race conditions and path traversal in `f2py` (a Fortran-to-Python compilation tool, not the core array API), while GHSA-6p56-wp2h-9hxr is a buffer overflow triggered by crafted `.f` files also in `f2py`\u2014all scoped to optional build/compilation features that standard numerical computing workflows never invoke.",
+      "pypi_verified": true,
+      "latest_version": "2.4.4",
+      "days_since_release": 13,
+      "days_since_first_release": 7071,
+      "monthly_downloads": 860228514,
+      "license": "",
+      "safety_passed": false,
+      "cve_clean": false,
+      "safety_notes": [
+        "\u2139 No license declared",
+        "\u26a0 Known CVEs: GHSA-2fc2-6r4j-p65h, GHSA-5545-2q6w-2gh6, GHSA-6p56-wp2h-9hxr",
+        "\u26a0 Suspicious AST patterns: os.environ access"
+      ],
+      "github_stars": null,
+      "pypi_url": "https://pypi.org/project/numpy/",
+      "github_url": "https://github.com/numpy/numpy",
+      "docs_url": ""
+    }
+  ]
+}
