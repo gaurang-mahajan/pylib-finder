@@ -7,9 +7,9 @@ Usage:
     python main.py "NLP tokenizer fast" --show-excluded
 """
 
-import argparse
 import asyncio
 import datetime
+import shlex
 import sys
 import os
 import concurrent.futures
@@ -29,7 +29,11 @@ except ImportError:
 
 from config import RESULTS_DIR, MAX_TOTAL_CANDIDATES
 from models import RunContext, Candidate
-from llm import expand_query, llm_prior, get_token_usage, reset_token_usage
+from llm import (
+    expand_query, llm_prior, get_token_usage, reset_token_usage,
+    disambiguate_query, filter_irrelevant,
+    generate_usage_snippets, compare_top_candidates,
+)
 from scrapers import (
     scrape_pypi, scrape_package_hints,
     scrape_github, scrape_github_topics,
@@ -75,8 +79,8 @@ def run_scrapers(ctx: RunContext) -> dict:
         ("Package Hints",    lambda: scrape_package_hints(ctx.package_hints)),
         ("GitHub",           lambda: scrape_github(ctx.search_terms)),
         ("GitHub Topics",    lambda: scrape_github_topics(ctx.search_terms)),
-        ("Stack Overflow",   lambda: scrape_stackoverflow(ctx.search_terms)),
-        ("Reddit",           lambda: scrape_reddit(ctx.search_terms)),
+        ("Stack Overflow",   lambda: scrape_stackoverflow(ctx.search_terms, ctx.intent)),
+        ("Reddit",           lambda: scrape_reddit(ctx.search_terms, ctx.intent)),
         ("Web",              lambda: scrape_web(ctx.search_terms)),
         ("Papers With Code", lambda: scrape_papers_with_code(ctx.search_terms)),
     ]
@@ -115,7 +119,7 @@ def display_results(candidates, show_excluded: bool = False):
         table.add_column("Fit", width=5)
         table.add_column("Safety", width=7)
         table.add_column("Sources", width=22)
-        table.add_column("Description", width=40)
+        table.add_column("Description", width=55)
 
         for i, c in enumerate(valid, 1):
             safety = "✅" if c.safety_passed else "⚠️ "
@@ -126,7 +130,7 @@ def display_results(candidates, show_excluded: bool = False):
                 f"[{fit_color}]{c.fit_score:.1f}[/{fit_color}]",
                 safety,
                 ", ".join(c.sources),
-                c.description[:60] + ("…" if len(c.description) > 60 else ""),
+                c.description[:80] + ("…" if len(c.description) > 80 else ""),
             )
         console.print(table)
     else:
@@ -163,6 +167,10 @@ def display_results(candidates, show_excluded: bool = False):
         if c.safety_notes:
             for note in c.safety_notes:
                 cprint(f"   {note}")
+        if c.ast_risk_summary:
+            cprint(f"   [dim]AST risk: {c.ast_risk_summary}[/dim]")
+        if c.cve_summary:
+            cprint(f"   [dim]CVE context: {c.cve_summary}[/dim]")
 
     if excluded:
         cprint(f"\n[dim]⚠ {len(excluded)} candidates excluded (failed safety/authenticity). "
@@ -266,74 +274,18 @@ def replay_skill_cards(json_path: str):
         cprint("\n[dim]No skill cards generated.[/dim]")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="PyLib-Finder — AI-assisted Python library discovery",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  python main.py search \"find knee in PCA plot\"\n"
-            "  python main.py search \"time series anomaly\" --show-excluded\n"
-            "  python main.py generate-skill ./pylib_results/2026-02-27_143022_knee/results.json\n"
-            "\n"
-            "  # Bare query also works (shorthand for 'search'):\n"
-            "  python main.py \"NLP tokenizer fast\"\n"
-        )
-    )
-
-    subparsers = parser.add_subparsers(dest="command")
-
-    # ── search subcommand ─────────────────────────────────────────────────────
-    search_p = subparsers.add_parser("search", help="Find libraries for a task description")
-    search_p.add_argument("query", help="Describe what you need")
-    search_p.add_argument("--show-excluded", action="store_true",
-                          help="Show packages that failed safety/authenticity checks")
-    search_p.add_argument("--no-skill-cards", action="store_true",
-                          help="Skip the skill card generation step")
-
-    # ── generate-skill subcommand ─────────────────────────────────────────────
-    replay_p = subparsers.add_parser(
-        "generate-skill",
-        help="Generate skill cards from a previous run's results.json"
-    )
-    replay_p.add_argument("results_json", help="Path to results.json from a previous run")
-
-    # Parse — if no subcommand but there's a positional arg, treat as bare search
-    args, unknown = parser.parse_known_args()
-
-    if args.command == "generate-skill":
-        print_header()
-        replay_skill_cards(args.results_json)
-        return
-
-    # Bare query fallback: python main.py "some query"
-    if args.command is None:
-        if unknown:
-            # Reconstruct as a search
-            args.query = unknown[0]
-            args.show_excluded = False
-            args.no_skill_cards = False
-        else:
-            parser.print_help()
-            return
-
-    # ── search flow ───────────────────────────────────────────────────────────
-    print_header()
+def run_search(query: str, show_excluded: bool = False, no_skill_cards: bool = False):
+    """Run the full library discovery pipeline for a single query."""
     reset_token_usage()
 
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    ctx = RunContext(
-        raw_query=args.query,
-        timestamp=ts,
-        output_dir=RESULTS_DIR,
-    )
-
+    ctx = RunContext(raw_query=query, timestamp=ts, output_dir=RESULTS_DIR)
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
     # ── Stage 1: Query expansion ──────────────────────────────────────────────
     cprint("\n[bold]🔍 Expanding query...[/bold]")
     try:
-        ctx = expand_query(args.query)
+        ctx = expand_query(query)
         ctx.timestamp = ts
         ctx.output_dir = RESULTS_DIR
         cprint(f"  [dim]Intent: {ctx.intent}[/dim]")
@@ -341,8 +293,37 @@ def main():
     except Exception as e:
         cprint(f"  [red]Query expansion failed: {e}[/red]")
         cprint("  [dim]Proceeding with raw query...[/dim]")
-        ctx.intent = args.query
-        ctx.search_terms = [args.query]
+        ctx.intent = query
+        ctx.search_terms = [query]
+
+    # ── Stage 1b: Disambiguation ──────────────────────────────────────────────
+    try:
+        interpretations = disambiguate_query(query)
+        if interpretations:
+            cprint("\n[bold yellow]⚠ Ambiguous query — multiple interpretations detected:[/bold yellow]")
+            for i, interp in enumerate(interpretations, 1):
+                cprint(f"  [{i}] [cyan]{interp['label']}[/cyan]: {interp['intent']}")
+            cprint(f"  [0] Use original intent (proceed as-is)")
+            if HAS_RICH:
+                choice_str = Prompt.ask("  Select interpretation", default="0")
+            else:
+                choice_str = input("  Select interpretation [0]: ").strip() or "0"
+            try:
+                choice = int(choice_str)
+            except ValueError:
+                choice = 0
+            if 1 <= choice <= len(interpretations):
+                chosen = interpretations[choice - 1]
+                cprint(f"  [dim]Using: {chosen['intent']}[/dim]")
+                ctx.intent = chosen["intent"]
+                try:
+                    ctx_refined = expand_query(chosen["intent"])
+                    ctx.search_terms = ctx_refined.search_terms
+                    ctx.package_hints = ctx_refined.package_hints
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     # ── Stage 2: LLM prior ────────────────────────────────────────────────────
     cprint("\n[bold]🤖 Seeding candidates from LLM prior...[/bold]")
@@ -374,6 +355,22 @@ def main():
 
     cprint(f"\n[bold]  Total unique candidates:[/bold] {len(all_results)}")
 
+    # ── Stage 3b: Relevance pre-filter ───────────────────────────────────────
+    cprint("\n[bold]🔎 Pre-filtering for relevance...[/bold]")
+    try:
+        keys_before = set(all_results.keys())
+        all_results = filter_irrelevant(all_results, ctx)
+        dropped_keys = sorted(keys_before - set(all_results.keys()))
+        if dropped_keys:
+            cprint(f"  [dim]Dropped {len(dropped_keys)} clearly irrelevant candidates "
+                   f"({len(all_results)} remaining):[/dim]")
+            for name in dropped_keys:
+                cprint(f"    [dim]✗ {name}[/dim]")
+        else:
+            cprint(f"  [dim]All {len(all_results)} candidates kept[/dim]")
+    except Exception as e:
+        cprint(f"  [yellow]⚠[/yellow] Pre-filter skipped ({e})")
+
     # ── Stage 4: Validation ───────────────────────────────────────────────────
     cprint(f"\n[bold]🛡️  Validating {len(all_results)} candidates...[/bold]")
 
@@ -384,8 +381,22 @@ def main():
 
     candidates = validate_candidates(all_results, ctx, progress_callback=progress_cb)
 
+    # ── Stage 4b: Comparison narrative ───────────────────────────────────────
+    top_candidates = [c for c in candidates if not c.excluded][:5]
+    comparison = ""
+    if len(top_candidates) >= 2:
+        cprint("\n[bold]🤖 Generating comparison narrative...[/bold]")
+        try:
+            comparison = compare_top_candidates(top_candidates[:3], ctx)
+        except Exception as e:
+            cprint(f"  [yellow]⚠[/yellow] Comparison skipped ({e})")
+
     # ── Stage 5: Display results ──────────────────────────────────────────────
-    display_results(candidates, show_excluded=args.show_excluded)
+    display_results(candidates, show_excluded=show_excluded)
+
+    if comparison:
+        cprint("\n[bold]── Comparison ───────────────────────────────────────────────[/bold]")
+        cprint(f"[dim]{comparison}[/dim]")
 
     # ── Token usage summary ───────────────────────────────────────────────────
     usage = get_token_usage()
@@ -400,15 +411,20 @@ def main():
 
     # ── Stage 6: Save outputs ─────────────────────────────────────────────────
     output_dir = make_output_dir(ctx)
-    write_markdown_report(candidates, ctx)
-    write_json_results(candidates, ctx, token_usage=usage)
+    write_markdown_report(candidates, ctx, comparison=comparison)
+    write_json_results(candidates, ctx, token_usage=usage, comparison=comparison)
     cprint(f"\n[bold]📁 Results saved →[/bold] [blue]{output_dir}[/blue]")
     cprint(f"   [dim]report.md, results.json[/dim]")
 
     # ── Stage 7: Skill card approval gate ─────────────────────────────────────
-    if not args.no_skill_cards:
+    if not no_skill_cards:
         approved = approval_gate(candidates)
         if approved:
+            cprint("\n[bold]✍  Generating usage snippets for approved candidates...[/bold]")
+            try:
+                generate_usage_snippets(approved, ctx)
+            except Exception as e:
+                cprint(f"  [yellow]⚠[/yellow] Snippet generation skipped ({e})")
             for c in approved:
                 path = write_skill_card(c, output_dir)
                 cprint(f"  [green]✓[/green] Skill card → [blue]{path}[/blue]")
@@ -416,7 +432,80 @@ def main():
         else:
             cprint("\n[dim]No skill cards generated.[/dim]")
     else:
-        cprint("\n[dim]Skill card generation skipped (--no-skill-cards).[/dim]")
+        cprint("\n[dim]Skill card generation skipped.[/dim]")
+
+
+def _show_repl_help():
+    cprint("\n[bold]Commands:[/bold]")
+    cprint("  [cyan]search \"<query>\"[/cyan]                             — find libraries for a task")
+    cprint("  [cyan]search \"<query>\" --show-excluded[/cyan]             — also show excluded packages")
+    cprint("  [cyan]search \"<query>\" --no-skill-cards[/cyan]            — skip skill card prompt")
+    cprint("  [cyan]generate-skill <results.json>[/cyan]                 — write skill cards from a past run")
+    cprint("  [cyan]help[/cyan]                                          — show this message")
+    cprint("  [cyan]quit[/cyan]                                          — exit\n")
+
+
+def repl():
+    """Interactive shell — runs until the user types quit/exit."""
+    print_header()
+    cprint("[dim]Interactive mode. Type [bold]help[/bold] for available commands.[/dim]")
+
+    while True:
+        try:
+            if HAS_RICH:
+                raw = Prompt.ask("\n[bold cyan]pylib>[/bold cyan]")
+            else:
+                raw = input("\npylib> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            cprint("\n[dim]Goodbye![/dim]")
+            break
+
+        raw = raw.strip()
+        if not raw:
+            continue
+
+        if raw.lower() in ("quit", "exit", "q"):
+            cprint("[dim]Goodbye![/dim]")
+            break
+
+        if raw.lower() in ("help", "?"):
+            _show_repl_help()
+            continue
+
+        try:
+            parts = shlex.split(raw)
+        except ValueError as e:
+            cprint(f"[red]Parse error: {e}[/red]")
+            continue
+
+        cmd = parts[0].lower()
+
+        if cmd == "generate-skill":
+            if len(parts) < 2:
+                cprint("[red]Usage: generate-skill <path/to/results.json>[/red]")
+                continue
+            replay_skill_cards(parts[1])
+
+        elif cmd == "search":
+            # Extract flags, collect remaining tokens as the query
+            flags = {p for p in parts[1:] if p.startswith("--")}
+            query_parts = [p for p in parts[1:] if not p.startswith("--")]
+            if not query_parts:
+                cprint("[red]Usage: search \"<query>\" [--show-excluded] [--no-skill-cards][/red]")
+                continue
+            query = " ".join(query_parts)
+            run_search(
+                query,
+                show_excluded="--show-excluded" in flags,
+                no_skill_cards="--no-skill-cards" in flags,
+            )
+
+        else:
+            cprint(f"[red]Unknown command '{parts[0]}'.[/red]  Type [bold]help[/bold] for available commands.")
+
+
+def main():
+    repl()
 
 
 if __name__ == "__main__":
