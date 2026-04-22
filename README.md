@@ -17,30 +17,35 @@ cp .env.example .env
 # Open .env and set ANTHROPIC_API_KEY (required) and GITHUB_TOKEN (optional).
 # The tool loads .env automatically — no shell exports needed.
 
-# 3. Run
-python main.py "find python function to locate knee in PCA plot"
+# 3. Start
+python main.py
+# then at the prompt:
+#   search "find python function to locate knee in PCA plot"
 ```
 
 ---
 
 ## Usage
 
+Start the shell, then fire commands as needed:
+
 ```bash
-# Full search (subcommand form)
-python main.py search "time series anomaly detection"
-
-# Bare query also works — shorthand for 'search'
-python main.py "NLP tokenizer fast"
-
-# Show packages that were excluded (failed safety/authenticity checks)
-python main.py search "image augmentation" --show-excluded
-
-# Skip skill card prompt at the end
-python main.py search "dimensionality reduction" --no-skill-cards
-
-# Generate skill cards from a previous run (no API calls needed)
-python main.py generate-skill ./pylib_results/2026-02-27_143022_knee-pca/results.json
+python main.py
 ```
+
+```
+pylib> search "time series anomaly detection"
+pylib> search "image augmentation" --show-excluded
+pylib> search "dimensionality reduction" --no-skill-cards
+pylib> generate-skill ./pylib_results/2026-02-27_143022_knee-pca/results.json
+pylib> help
+pylib> quit
+```
+
+| Flag | Effect |
+|------|--------|
+| `--show-excluded` | Also display packages that failed safety/authenticity checks |
+| `--no-skill-cards` | Skip the skill card approval prompt at the end |
 
 ---
 
@@ -68,6 +73,9 @@ The pipeline has seven stages. Each is labelled as **LLM** (Claude API call) or 
 ### Stage 1 — Query Expansion `[LLM]`
 Claude takes the raw user query and produces: a one-sentence intent description, 3–6 search phrases for use across sources, and 2–4 likely package name fragments. This structured output drives all downstream searches and is used as the reference for fit scoring later.
 
+### Stage 1b — Query Disambiguation `[LLM]`
+Immediately after expansion, Claude checks whether the query is ambiguous enough to produce meaningfully different library recommendations under different interpretations (e.g. "graph library" → visualisation vs. algorithms). If multiple interpretations are detected, the user is shown a numbered list and asked to pick one. The chosen intent then drives a fresh search-term expansion before scraping begins.
+
 ### Stage 2 — LLM Prior `[LLM]`
 Before any external search runs, Claude suggests packages it already knows from training (up to 8 candidates). These "seeded candidates" surface niche-but-correct packages that don't rank well in keyword search. They enter the pipeline tagged `source: llm` and must pass all the same validation checks as any other candidate.
 
@@ -78,14 +86,17 @@ Eight scrapers run in parallel via `ThreadPoolExecutor`, each returning package 
 - **PyPI** — searches pypi.org using the same endpoint as `pip search`, without a topic classifier restriction so non-scientific packages are also discovered.
 - **GitHub** — searches repositories via the GitHub REST API filtered to Python, sorted by stars. Extracts the PyPI package name from `pip install` or `import` mentions in the repo description before falling back to the repo name itself. Embeds star count as a health signal.
 - **GitHub Topics** — searches GitHub repos whose *topic tags* match the search term slug (e.g. `topic:anomaly-detection`). Topic-tagged repos are curated by their maintainers and tend to be more purpose-built than plain keyword matches.
-- **Stack Overflow** — queries the StackExchange API for relevant Python questions. Extracts package names from both question titles and the body of top-voted answers, using explicit `pip install` / `import` patterns for higher precision.
-- **Reddit** — searches r/datascience, r/learnpython, r/MachineLearning, r/Python, r/LanguageTechnology, r/bioinformatics and r/genomics. Covers 2 search terms and up to 800 characters of each post body.
+- **Stack Overflow** — queries the StackExchange API for relevant Python questions. Extracts package names from question titles and top-voted answer bodies using `pip install` / `import` regex patterns, then runs a second **LLM pass** over the answer bodies to catch natural-language recommendations (e.g. *"I'd use statsmodels for this"*) that regex misses.
+- **Reddit** — searches r/datascience, r/learnpython, r/MachineLearning, r/Python, r/LanguageTechnology, r/bioinformatics and r/genomics. Applies the same two-step approach: regex on post bodies first, then an **LLM pass** over collected post texts to extract conversational package mentions.
 - **Web** — DuckDuckGo HTML search, extracts `pip install <pkg>` and `import <pkg>` patterns from snippets.
 - **Papers With Code** — queries the [Papers With Code API](https://paperswithcode.com/api/v1/) for academic ML/AI papers that have public code. Extracts GitHub repository names as candidate package names, sorted by star count. Particularly strong for cutting-edge ML queries.
 
 Results from all sources are merged and deduplicated by package name. A candidate found by multiple sources gets a combined `sources` list.
 
 Source priority for description selection (highest to lowest): `hints > llm > pypi > github > github_topics > paperswithcode > stackoverflow > reddit > web`.
+
+### Stage 3b — Relevance Pre-filter `[LLM]`
+After scraping and merging, a single LLM call reviews all candidate names and descriptions and removes obvious mismatches before the expensive validation stage. This is intentionally conservative — only clear mismatches are dropped. The call typically saves several PyPI/OSV/pypistats API calls per run.
 
 ### Stage 4 — Validation `[deterministic + LLM]`
 Each unique candidate goes through four sub-stages:
@@ -94,24 +105,45 @@ Each unique candidate goes through four sub-stages:
 
    Authenticity, safety, and health checks all run **in parallel** via `ThreadPoolExecutor` (up to 8 workers), cutting Stage 4 wall-clock time by roughly the number of candidates.
 
-2. **Safety** `[deterministic]` — two checks:
+2. **Safety** `[deterministic]` — four checks:
    - *OSV vulnerability scan*: queries [osv.dev](https://osv.dev) for known CVEs. A confirmed CVE is grounds for exclusion.
-   - *AST scan*: downloads the source tarball from PyPI, extracts `__init__.py`, and walks the AST for suspicious patterns (`exec`, `eval`, `subprocess`, network calls, base64 obfuscation). Best-effort; no code is executed.
+   - *License check*: flags packages with no declared license (`ℹ`) and packages under restrictive licenses — GPL, AGPL, EUPL, SSPL, etc. — that may limit commercial or proprietary use (`⚠`). Configurable via `RESTRICTIVE_LICENSES` in `config.py`. Does not cause exclusion.
+   - *PyPI metadata signals*: flags yanked latest releases, packages with only a single version ever published, no project URLs, and wheel-only packages where source cannot be inspected.
+   - *AST scan*: downloads the source tarball from PyPI, extracts `__init__.py`, and walks the AST for: suspicious calls (`exec`, `eval`, `compile`, `subprocess`, `ctypes`/`CDLL`, `getenv`, network calls); `os.environ` attribute access; hardcoded IPv4 addresses; and sensitive credential paths (`.ssh`, `.aws/credentials`, etc.). Also scans **every string constant in the entire AST** for large base64-like blobs, catching inline patterns like `exec(base64.b64decode("..."))`. Best-effort; no code is executed.
 
-3. **Health** `[deterministic]` — fetches download stats from [pypistats.org](https://pypistats.org). Also surfaces GitHub star count (if scraped). Flags packages not updated in 2+ years or with fewer than 100 downloads/month as warnings, not exclusions.
+3. **Health** `[deterministic]` — fetches download stats from [pypistats.org](https://pypistats.org). Also surfaces GitHub star count (if scraped). Issues warnings (never exclusions) for:
+   - Not updated in 2+ years (`DAYS_SINCE_RELEASE_WARN`)
+   - Fewer downloads than threshold (`MIN_MONTHLY_DOWNLOADS`)
+   - First released within 90 days (`DAYS_NEW_PACKAGE_WARN`) — flagged as a safety warning given higher risk of instability
+   - Version 0.x (`PRE_RELEASE_WARN`) — flagged as informational
 
-4. **Fit scoring** `[LLM]` — Claude scores **all non-excluded candidates in a single API call** (batch scoring), returning a 0–10 score, a one-sentence explanation, and suggested function/class names. Falls back to per-candidate calls if the batch call fails. This replaces the original N-calls-per-run approach and cuts LLM cost for Stage 4 by 10–20×.
+4. **Fit scoring** `[LLM]` — Claude scores **all non-excluded candidates in a single API call** (batch scoring), returning a 0–10 score, a one-sentence explanation, and suggested function/class names. The model is explicitly given maturity signals — `days_since_last_update`, `days_since_first_release`, `pre_release`, `monthly_downloads`, and `github_stars` — and instructed to apply light penalisation for stale, new, or pre-release packages. Falls back to per-candidate calls if the batch call fails.
+
+5. **AST flag interpretation** `[LLM]` — for any candidate whose AST scan raised flags, a short LLM call produces a 1–2 sentence plain-English risk assessment (likely malicious / incidentally suspicious / false positive). Stored as `ast_risk_summary` and shown in the details section.
+
+6. **CVE contextualisation** `[LLM]` — for any candidate with known CVEs, a short LLM call assesses whether the CVEs affect typical programmatic (API) use of the library or are scoped to CLI, server deployment, or optional features. Stored as `cve_summary`.
+
+All LLM calls use **exponential backoff** (up to 4 retries, 2→4→8→16 s delays) on transient server errors (429 rate-limit, 529 overloaded, 5xx). A `Retry-After` header is honoured when present.
+
+### Stage 4b — Usage Snippets `[LLM]`
+After validation, a single LLM call generates a 4–8 line Python usage example for each of the top 5 candidates, tailored to the user's specific task using the `suggested_functions` already returned by the scorer. Snippets appear in the terminal detail view, the markdown report, and the YAML skill cards.
 
 ### Stage 5 — Display `[deterministic]`
-Results are printed to the terminal as a ranked table (via `rich`) with a detail section for the top 5. GitHub stars are shown alongside download counts in the health line. Excluded candidates are summarised as a count; `--show-excluded` reveals the reasons.
+Results are printed to the terminal as a ranked table (via `rich`) with a details section for the top 5. Each entry shows fit notes, suggested functions, health metrics, safety notes, AST risk summary (if any), CVE context (if any), and usage snippet. Excluded candidates are summarised as a count; `--show-excluded` reveals the reasons.
+
+A **comparison narrative** is printed after the table — a 4–6 sentence paragraph comparing the top 3 candidates, covering trade-offs in maturity, API style, maintenance, and fit, ending with a direct recommendation.
 
 ### Stage 6 — Save outputs `[deterministic]`
-`report.md` and `results.json` are written to the timestamped output folder. `results.json` includes all candidate data (including `github_stars`) plus the token usage summary for the run.
+`report.md` and `results.json` are written to the timestamped output folder. Both include `usage_snippet`, `ast_risk_summary`, `cve_summary`, and the top-3 `comparison` narrative. `results.json` also includes all candidate data and the token usage summary for the run.
 
 ### Stage 7 — Skill card approval gate `[deterministic]`
 The user is prompted to select which candidates to generate skill cards for. Only approved candidates get a `.yaml` file written under `skills/`. This step can be re-run at any time on a past `results.json` without making any new API calls:
 
 ```bash
+# from the interactive shell:
+#   generate-skill ./pylib_results/<run-folder>/results.json
+#
+# or one-shot:
 python main.py generate-skill ./pylib_results/<run-folder>/results.json
 ```
 
@@ -180,8 +212,14 @@ Key settings in `config.py`:
 | `MAX_CANDIDATES_PER_SOURCE` | `8` | Hits to pull per scraper |
 | `MAX_TOTAL_CANDIDATES` | `32` | Hard cap on candidates entering validation |
 | `MAX_VALIDATION_WORKERS` | `8` | ThreadPoolExecutor workers for parallel validation |
-| `DAYS_SINCE_RELEASE_WARN` | `730` | Flag packages not updated in this many days |
-| `MIN_MONTHLY_DOWNLOADS` | `50` | Flag packages below this download threshold |
+| `PYPI_MAX_TERMS` | `3` | Search terms sent to PyPI scraper |
+| `SCRAPER_MAX_TERMS` | `2` | Search terms sent to GitHub, SO, Web, Papers With Code |
+| `REDDIT_MAX_TERMS` | `2` | Search terms sent per subreddit |
+| `REDDIT_MAX_SUBREDDITS` | `4` | Subreddits searched (top N from ordered list) |
+| `DAYS_SINCE_RELEASE_WARN` | `730` | Warn if package not updated in this many days |
+| `DAYS_NEW_PACKAGE_WARN` | `90` | Warn if package first released within this many days |
+| `PRE_RELEASE_WARN` | `True` | Show info note for version 0.x packages |
+| `MIN_MONTHLY_DOWNLOADS` | `50` | Warn if below this monthly download threshold |
 | `HTTP_TIMEOUT` | `10` | Seconds before a scraper request times out |
 | `GITHUB_TOKEN` | `.env` / env var | Optional GitHub PAT — raises API rate limit |
 | `SUSPICIOUS_AST_PATTERNS` | see file | Function names that trigger AST safety warnings |
